@@ -2,7 +2,7 @@
 
 ## 🌟 Revolutionizing Blockchain Staking
 
-Welcome to the official GitHub page of **Encapsulate**—where innovation meets excellence in blockchain staking solutions. Our mission is to transform your unused tokens into valuable assets with cutting-edge technology and unrivaled expertise.
+Welcome to **Encapsulate's** official GitHub page! We provide the infrastructure you need to earn rewards from your blockchain tokens through staking. Let us help you make the most of your tokens by turning them into valuable assets.
 
 ## 🚀 About Us
 
