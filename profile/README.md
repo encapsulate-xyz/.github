@@ -33,9 +33,6 @@ Stay in the loop and engage with our community:
 - **LinkedIn**: [Encapsulate LinkedIn](https://www.linkedin.com/company/encapsulate-xyz)
 - **Discord**: [Join Our Community](https://discord.gg/encapsulate)
 
-## 🤝 Contributing
-
-We welcome contributions from the community. If you’re interested in contributing, please review our [contributing guidelines](CONTRIBUTING.md) and submit your pull requests. Your involvement is key to our ongoing innovation and improvement.
 
 ## 📞 Contact Us
 
