@@ -1,4 +1,7 @@
 # Welcome to **Encapsulate**!
+![Encapsulate-TwitterCover-Recovered 1](https://github.com/user-attachments/assets/75b46f58-98c9-410e-8a2a-f7bf28763756)
+
+
 
 ## 🌟 Revolutionizing Blockchain Staking
 
