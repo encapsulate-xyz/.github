@@ -67,6 +67,6 @@ jobs:
               gh pr review "$PR" --repo "$REPO" --approve
               
               # Merge the PR
-              gh pr merge "$PR" --repo "$REPO" --squash
+              gh pr merge "$PR" --repo "$REPO" --squash --admin
             done
           done
