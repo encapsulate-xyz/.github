@@ -51,8 +51,8 @@ jobs:
             echo "========================================"
             echo "Checking repository: $REPO"
             
-            # 1. Fetch all open PR numbers created by Dependabot for the repository
-            PR_LIST=$(gh pr list --repo "$REPO" --author "app/dependabot" --state open --json number --jq '.[].number')
+            # 1. Fetch all open PR numbers created by Dependabot for the repository, sorting oldest to newest
+            PR_LIST=$(gh pr list --repo "$REPO" --author "app/dependabot" --state open --json number --jq 'reverse | .[].number')
 
             if [ -z "$PR_LIST" ]; then
               echo "No open Dependabot PRs found in $REPO. Skipping."
