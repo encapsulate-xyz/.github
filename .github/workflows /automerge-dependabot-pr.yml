@@ -1,0 +1,72 @@
+name: Dependabot Auto-Merge
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Runs every 12 hours
+    - cron: '0 */12 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot:
+    environment: automerge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Mint GitHub App token
+        id: app
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.APP_PK }}
+
+      - name: Approve and Auto-merge PRs
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          # Define the repositories to track
+          REPOS=(
+            "encapsulate-xyz/sui-rgp-ui"
+            "encapsulate-xyz/sui-rgp-autopilot"
+            "encapsulate-xyz/sui-alert-bot"
+            "encapsulate-xyz/titanium"
+            "encapsulate-xyz/gitbell-axelar"
+            "encapsulate-xyz/solana-graph-viz"
+            "encapsulate-xyz/rewards-calculator-ui"
+            "encapsulate-xyz/api-server"
+            "encapsulate-xyz/celestia-pay-for-blob-ui"
+            "encapsulate-xyz/celestia-node-checker-ui"
+            "encapsulate-xyz/aptos-network-viz"
+            "encapsulate-xyz/cors-proxy"
+            "encapsulate-xyz/cosmos-bots"
+            "encapsulate-xyz/notion-website-scripts"
+          )
+
+          for REPO in "${REPOS[@]}"; do
+            echo "========================================"
+            echo "Checking repository: $REPO"
+            
+            # 1. Fetch all open PR numbers created by Dependabot for the repository
+            PR_LIST=$(gh pr list --repo "$REPO" --author "app/dependabot" --state open --json number --jq '.[].number')
+
+            if [ -z "$PR_LIST" ]; then
+              echo "No open Dependabot PRs found in $REPO. Skipping."
+              continue
+            fi
+
+            # 2. Loop through each PR number
+            for PR in $PR_LIST; do
+              echo "Processing Dependabot PR #$PR in $REPO..."
+              
+              # Approve the PR
+              gh pr review "$PR" --repo "$REPO" --approve
+              
+              # Merge the PR
+              gh pr merge "$PR" --repo "$REPO" --squash
+            done
+          done
