@@ -73,6 +73,7 @@ jobs:
 
   notify-on-failure:
     runs-on: ubuntu-latest
+    environment: automerge
     needs: dependabot
     if: failure()
     steps:
