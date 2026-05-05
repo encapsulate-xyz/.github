@@ -16,14 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Mint GitHub App token
         id: app
-        uses: tibdex/github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
-          app_id: ${{ secrets.APP_ID }}
-          private_key: ${{ secrets.APP_PK }}
+          client-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PK }}
 
       - name: Approve and Auto-merge PRs
         env:
@@ -78,7 +78,7 @@ jobs:
     if: failure()
     steps:
       - name: Send failure email
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v17
         with:
           server_address: smtp.gmail.com
           server_port: 587
