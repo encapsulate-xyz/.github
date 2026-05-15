@@ -24,6 +24,7 @@ jobs:
         with:
           client-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PK }}
+          owner: ${{ github.repository_owner }}
 
       - name: Approve and Auto-merge PRs
         env:
@@ -39,12 +40,11 @@ jobs:
             "encapsulate-xyz/solana-graph-viz"
             "encapsulate-xyz/rewards-calculator-ui"
             "encapsulate-xyz/api-server"
-            "encapsulate-xyz/celestia-pay-for-blob-ui"
             "encapsulate-xyz/celestia-node-checker-ui"
             "encapsulate-xyz/aptos-network-viz"
-            "encapsulate-xyz/cors-proxy"
             "encapsulate-xyz/cosmos-bots"
             "encapsulate-xyz/notion-website-scripts"
+            "encapsulate-xyz/celestia-pay-for-blob-ui"
           )
 
           for REPO in "${REPOS[@]}"; do
