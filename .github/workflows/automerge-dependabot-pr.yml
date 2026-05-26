@@ -45,6 +45,7 @@ jobs:
             "encapsulate-xyz/cosmos-bots"
             "encapsulate-xyz/notion-website-scripts"
             "encapsulate-xyz/celestia-pay-for-blob-ui"
+            "encapsulate-xyz/askeladd"
           )
 
           for REPO in "${REPOS[@]}"; do
