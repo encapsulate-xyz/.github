@@ -3,9 +3,7 @@
 
 
 
-## 🌟 Revolutionizing Blockchain Staking
-
-Welcome to **Encapsulate's** official GitHub page! We provide the infrastructure you need to earn rewards from your blockchain tokens through staking. Let us help you make the most of your tokens by turning them into valuable assets.
+Validator infrastructure for new chains, since 2020. Early to testnet, quick to upgrade, easy to reach. Trusted by Sui, NEAR, Monad, Lido, Starknet and more.
 
 ## 🚀 About Us
 
@@ -27,20 +25,20 @@ At Encapsulate, we’re not just offering staking solutions; we’re redefining 
 
 ## 🚀 Getting Started
 
-Embark on your staking journey with Encapsulate! For more information about our offerings or to get started, visit our [website](https://encapsulate.xyz) or contact us directly at [contact@encapsulate.xyz](mailto:contact@encapsulate.xyz).
+Embark on your staking journey with Encapsulate! For more information about our offerings or to get started, visit our [website](https://encapsulate.xyz) or contact us directly at [hello@encapsulate.xyz](mailto:hello@encapsulate.xyz).
 
 ## 🌐 Connect With Us
 
 Stay in the loop and engage with our community:
 - **Twitter**: [@encaphq](https://x.com/encaphq)
 - **LinkedIn**: [Encapsulate LinkedIn](https://www.linkedin.com/company/encapsulate-xyz)
-- **Discord**: [Join Our Community](https://discord.com/invite/S5x4e2AHVV)
+- **Discord**: [Join Our Community](https://discord.gg/q6cmGycxsr)
 
 
 ## 📞 Contact Us
 
 For inquiries or support, reach out to us:
-- **Email**: [contact@encapsulate.xyz](mailto:contact@encapsulate.xyz)
+- **Email**: [hello@encapsulate.xyz](mailto:hello@encapsulate.xyz)
 - **Website**: [https://encapsulate.xyz](https://encapsulate.xyz)
 
 Thank you for visiting Encapsulate’s GitHub page. We look forward to supporting your blockchain staking needs and engaging with the community!
