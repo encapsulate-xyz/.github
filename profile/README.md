@@ -32,7 +32,7 @@ Embark on your staking journey with Encapsulate! For more information about our 
 Stay in the loop and engage with our community:
 - **Twitter**: [@encaphq](https://x.com/encaphq)
 - **LinkedIn**: [Encapsulate LinkedIn](https://www.linkedin.com/company/encapsulate-xyz)
-- **Discord**: [Join Our Community](https://discord.gg/q6cmGycxsr)
+- **Discord**: [Join Our Community](https://discord.gg/PQJX5JVS8h)
 
 
 ## 📞 Contact Us
