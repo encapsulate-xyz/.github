@@ -48,6 +48,9 @@ jobs:
             "encapsulate-xyz/notion-website-scripts"
             "encapsulate-xyz/celestia-pay-for-blob-ui"
             "encapsulate-xyz/askeladd"
+            "encapsulate-xyz/iota-sweep-script"
+            "encapsulate-xyz/pharos-staking-hub"
+            "encapsulate-xyz/Scripts"
           )
 
           for REPO in "${REPOS[@]}"; do
