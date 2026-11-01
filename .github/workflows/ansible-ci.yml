@@ -1,0 +1,133 @@
+name: Ansible CI
+
+# Shared checks for the Ansible repos. A repo runs them with:
+#   jobs:
+#     ansible:
+#       uses: encapsulate-xyz/.github/.github/workflows/ansible-ci.yml@main
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: pip install ansible==11.13.0 ansible-lint==26.10.1
+
+      - name: Check vault files are encrypted
+        run: |
+          status=0
+          for file in $(git ls-files | grep -E '(^|/)(group_vars|host_vars|inventory)/.*vault[^/]*\.ya?ml$'); do
+            if ! head -n 1 "$file" | grep -q '^\$ANSIBLE_VAULT;'; then
+              echo "::error file=$file::$file is not encrypted with ansible-vault"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Check HCP Vault secrets are written with no_log
+        shell: python
+        run: |
+          import pathlib
+          import subprocess
+          import sys
+
+          import yaml
+
+
+          class Loader(yaml.SafeLoader):
+              pass
+
+
+          # Ansible tags such as !unsafe and !vault don't matter here
+          Loader.add_multi_constructor("!", lambda loader, suffix, node: None)
+
+
+          def leaf_tasks(items):
+              for task in items or []:
+                  if not isinstance(task, dict):
+                      continue
+                  if any(key in task for key in ("block", "rescue", "always")):
+                      for key in ("block", "rescue", "always"):
+                          yield from leaf_tasks(task.get(key))
+                  else:
+                      yield task
+
+
+          def reads_vault(task):
+              return any("hashi_vault" in key for key in task)
+
+
+          failed = False
+          files = subprocess.run(["git", "ls-files", "*.yml", "*.yaml"], capture_output=True, text=True, check=True).stdout.split()
+          for path in files:
+              text = pathlib.Path(path).read_text(errors="ignore")
+              if "hashi_vault" not in text:
+                  continue
+              try:
+                  data = yaml.load(text, Loader=Loader)
+              except yaml.YAMLError:
+                  continue
+              if not isinstance(data, list):
+                  continue
+              tasks = list(leaf_tasks(data))
+              secrets = {task["register"] for task in tasks if reads_vault(task) and task.get("register")}
+              for task in tasks:
+                  if task.get("no_log"):
+                      continue
+                  body = str({key: value for key, value in task.items() if key != "name"})
+                  if reads_vault(task) or any(secret in body for secret in secrets):
+                      name = task.get("name", "unnamed task")
+                      line = next((n for n, l in enumerate(text.splitlines(), 1) if name in l), 1)
+                      print(f"::error file={path},line={line}::'{name}' handles a secret from HCP Vault without no_log: true")
+                      failed = True
+
+          sys.exit(1 if failed else 0)
+
+      - name: Check versions are pinned
+        run: |
+          grep -rnE "^\s*version:\s*[\"']?(latest|master|main)[\"']?\s*$" group_vars 2>/dev/null | while IFS=: read -r file line _; do
+            echo "::warning file=$file,line=$line::Version is not pinned; use a release tag"
+          done
+
+      # the vault password isn't available here, so encrypted files become empty stubs for the checks below
+      - name: Replace encrypted files with stubs
+        run: |
+          for file in $(git ls-files '*.yml' '*.yaml'); do
+            if head -n 1 "$file" | grep -q '^\$ANSIBLE_VAULT;'; then
+              printf -- '---\n{}\n' > "$file"
+            fi
+          done
+
+      - name: Install collections and roles
+        run: |
+          for file in requirements.yml collections/requirements.yml roles/requirements.yml; do
+            if [ -f "$file" ]; then
+              ansible-galaxy install -r "$file"
+            fi
+          done
+
+      - name: Syntax check playbooks
+        run: |
+          status=0
+          for playbook in $(grep -l -E '^\s*(- )?hosts:' *.yml playbooks/*.yml 2>/dev/null); do
+            if ! ansible-playbook --syntax-check -i localhost, "$playbook"; then
+              echo "::error file=$playbook::Syntax check failed"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Run ansible-lint
+        run: ansible-lint --offline
