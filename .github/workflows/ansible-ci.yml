@@ -141,6 +141,10 @@ jobs:
   molecule:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # pull-requests: write lets it post the coverage table on the pull request
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -181,6 +185,7 @@ jobs:
           done
 
       - name: Run Molecule scenarios
+        id: molecule
         if: steps.scenarios.outputs.list != ''
         env:
           SCENARIOS: ${{ steps.scenarios.outputs.list }}
@@ -196,4 +201,32 @@ jobs:
 
       - name: Check task coverage
         if: steps.scenarios.outputs.list != ''
+        env:
+          TASK_COVERAGE_REPORT: ${{ runner.temp }}/task-coverage.md
         run: python .ansible-ci/ansible-ci/check_task_coverage.py "$RUNNER_TEMP/task-coverage.jsonl" molecule/untested.yml
+
+      # one comment per pull request, edited on every push; a failure here never fails the job
+      - name: Post task coverage on the pull request
+        if: always() && steps.scenarios.outputs.list != '' && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          MOLECULE: ${{ steps.molecule.outcome }}
+        run: |
+          marker='<!-- ansible-ci:task-coverage -->'
+          report="$RUNNER_TEMP/task-coverage.md"
+          if [ "$MOLECULE" != success ]; then
+            body="## Task coverage"$'\n\n'"Molecule failed on ${SHA:0:7}, so there is no coverage for this push. See the molecule job log."
+          elif [ -f "$report" ]; then
+            body="$(cat "$report")"$'\n\n'"For ${SHA:0:7}."
+          else
+            exit 0
+          fi
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$marker"$'\n'"$body" > /dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$marker"$'\n'"$body" > /dev/null
+          fi

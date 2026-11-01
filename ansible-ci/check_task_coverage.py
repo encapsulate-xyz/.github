@@ -121,6 +121,17 @@ def ran_tasks(coverage_file, root):
     return ran
 
 
+def table(first_column, keys, ran, listed):
+    """Markdown table lines: header, divider, and one row counting the given tasks."""
+    keys = set(keys)
+    total, covered = len(keys), len(keys & ran)
+    header = ["Tasks", "Ran in Molecule", "Listed as untested", "Not accounted for"]
+    row = [str(total), f"{covered} ({covered * 100 // max(total, 1)}%)", str(len((keys & listed) - ran)), str(len(keys - ran - listed))]
+    if first_column:
+        header, row = [first_column, *header], [f"`{first_column}`", *row]
+    return ["| " + " | ".join(header) + " |", "|" + "---|" * len(header), "| " + " | ".join(row) + " |"]
+
+
 def main(coverage_file, untested_file):
     root = pathlib.Path.cwd().resolve()
     tasks = repo_tasks(root)
@@ -143,18 +154,24 @@ def main(coverage_file, untested_file):
     for key in sorted(tasks.keys() - ran - listed):
         errors.append((key[0], key[1], f"'{tasks[key][0]}' doesn't run in any Molecule scenario. Run it in a scenario, or list it in {untested_file} with a reason"))
 
-    total, covered = len(tasks), len(ran)
-    summary = [
-        "## Task coverage",
-        "",
-        "| Tasks | Ran in Molecule | Listed as untested | Not accounted for |",
-        "|---|---|---|---|",
-        f"| {total} | {covered} ({covered * 100 // max(total, 1)}%) | {len(listed - ran)} | {len(tasks.keys() - ran - listed)} |",
-    ]
+    summary = ["## Task coverage", "", *table("", tasks.keys(), ran, listed)]
+    # by role, playbook and shared task file, so one untested playbook doesn't hide the rest
+    areas = {}
+    for key in tasks:
+        parts = key[0].split("/")
+        areas.setdefault("/".join(parts[:2]) if parts[0] == "roles" else key[0], set()).add(key)
+    rows = [table(area, keys, ran, listed)[-1] for area, keys in sorted(areas.items())]
+    summary += ["", "<details><summary>By role and file</summary>", "", *table("Where", [], ran, listed)[:2], *rows, "", "</details>"]
+    if errors:
+        summary += ["", f"**{len(errors)} problem(s):**", ""]
+        summary += [f"- `{path}:{line}` {message}" for path, line, message in errors[:30]]
+        if len(errors) > 30:
+            summary.append(f"- and {len(errors) - 30} more in the job log")
     print("\n".join(summary))
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
-            output.write("\n".join(summary) + "\n")
+    for name in ("GITHUB_STEP_SUMMARY", "TASK_COVERAGE_REPORT"):
+        if os.environ.get(name):
+            with open(os.environ[name], "a", encoding="utf-8") as output:
+                output.write("\n".join(summary) + "\n")
 
     for path, line, message in errors:
         print(f"::error file={path},line={line}::{message}")

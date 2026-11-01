@@ -13,7 +13,7 @@ It runs only in repos that have Molecule scenarios using the Docker driver (`mol
 
 1. replaces encrypted files with empty stubs, so scenarios supply fake values for `group_vars/vault.yml`
 2. runs `molecule test`: a fresh container, the playbook, the playbook again to check nothing changes, then the scenario's `verify.yml`
-3. checks task coverage across all scenarios
+3. checks task coverage across all scenarios, and on a pull request posts the result as one comment that each push edits
 
 Scenarios that run on a real server (driver `default`) need its address and key, so CI skips them. Run those locally before merging risky changes.
 
