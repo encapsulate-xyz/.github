@@ -4,8 +4,14 @@ name: Ansible CI
 #   jobs:
 #     ansible:
 #       uses: encapsulate-xyz/.github/.github/workflows/ansible-ci.yml@main
+# The molecule job runs only in repos with Molecule scenarios; see ansible-ci/README.md.
 on:
   workflow_call:
+    inputs:
+      ci-ref:
+        description: Branch of encapsulate-xyz/.github to take the ansible-ci tools from
+        type: string
+        default: main
 
 permissions:
   contents: read
@@ -131,3 +137,63 @@ jobs:
 
       - name: Run ansible-lint
         run: ansible-lint --offline
+
+  molecule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # scenarios on a real server need its address and key, so CI runs the container ones only
+      - name: Find Molecule scenarios
+        id: scenarios
+        run: |
+          scenarios=$(grep -l -E '^\s+name:\s+docker\s*$' molecule/*/molecule.yml 2>/dev/null | cut -d/ -f2 | xargs)
+          echo "Scenarios: ${scenarios:-none, so nothing to run}"
+          echo "list=$scenarios" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout ansible-ci tools
+        if: steps.scenarios.outputs.list != ''
+        uses: actions/checkout@v6
+        with:
+          repository: encapsulate-xyz/.github
+          ref: ${{ inputs.ci-ref }}
+          path: .ansible-ci
+
+      - name: Set up Python
+        if: steps.scenarios.outputs.list != ''
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible and Molecule
+        if: steps.scenarios.outputs.list != ''
+        run: pip install ansible==11.13.0 molecule==26.10.0 "molecule-plugins[docker]==26.10.12" docker==7.2.0
+
+      - name: Replace encrypted files with stubs
+        if: steps.scenarios.outputs.list != ''
+        run: |
+          for file in $(git ls-files '*.yml' '*.yaml'); do
+            if head -n 1 "$file" | grep -q '^\$ANSIBLE_VAULT;'; then
+              printf -- '---\n{}\n' > "$file"
+            fi
+          done
+
+      - name: Run Molecule scenarios
+        if: steps.scenarios.outputs.list != ''
+        env:
+          SCENARIOS: ${{ steps.scenarios.outputs.list }}
+          ANSIBLE_CALLBACK_PLUGINS: ${{ github.workspace }}/.ansible-ci/ansible-ci/callback_plugins
+          ANSIBLE_CALLBACKS_ENABLED: task_coverage
+          TASK_COVERAGE_FILE: ${{ runner.temp }}/task-coverage.jsonl
+          PY_COLORS: "1"
+          ANSIBLE_FORCE_COLOR: "1"
+        run: |
+          for scenario in $SCENARIOS; do
+            molecule test -s "$scenario"
+          done
+
+      - name: Check task coverage
+        if: steps.scenarios.outputs.list != ''
+        run: python .ansible-ci/ansible-ci/check_task_coverage.py "$RUNNER_TEMP/task-coverage.jsonl" molecule/untested.yml
