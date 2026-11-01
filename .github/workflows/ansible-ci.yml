@@ -139,6 +139,9 @@ jobs:
         run: ansible-lint --offline
 
   molecule:
+    # pull requests only: the merge to main is the code the pull request already tested,
+    # and private repos pay for every minute
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # pull-requests: write lets it post the coverage table on the pull request

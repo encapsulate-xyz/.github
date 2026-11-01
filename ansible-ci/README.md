@@ -9,7 +9,7 @@ Shared tools for `.github/workflows/ansible-ci.yml`, the CI every Ansible repo r
 
 ## The molecule job
 
-It runs only in repos that have Molecule scenarios using the Docker driver (`molecule/<scenario>/molecule.yml`). For each one it:
+It runs on pull requests only, in repos that have Molecule scenarios using the Docker driver (`molecule/<scenario>/molecule.yml`). For each one it:
 
 1. replaces encrypted files with empty stubs, so scenarios supply fake values for `group_vars/vault.yml`
 2. runs `molecule test`: a fresh container, the playbook, the playbook again to check nothing changes, then the scenario's `verify.yml`
