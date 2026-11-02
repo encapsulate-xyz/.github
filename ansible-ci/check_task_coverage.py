@@ -17,6 +17,7 @@ The check also fails when a listed task runs or no longer exists, so the list st
 import json
 import os
 import pathlib
+import subprocess
 import sys
 
 import yaml
@@ -74,23 +75,27 @@ def notified_names(tasks):
     return names
 
 
+def tracked_files(root, patterns):
+    """Files matching the patterns that git tracks, so roles Galaxy installs into roles/ don't count."""
+    tracked = set(subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True).stdout.splitlines())
+    return [path for pattern in patterns for path in sorted(root.glob(pattern)) if path.relative_to(root).as_posix() in tracked]
+
+
 def repo_tasks(root):
     """Returns {(file, line): (name, is_handler)} for every task in the repo that can report a result."""
     found = []
-    for pattern in PLAYBOOK_GLOBS:
-        for path in sorted(root.glob(pattern)):
-            plays = load(path)
-            if not isinstance(plays, list) or not all(isinstance(play, dict) for play in plays):
-                continue
-            if not any("hosts" in play for play in plays):
-                continue
-            for play in plays:
-                for section in PLAY_SECTIONS:
-                    found += [(path, task, section == "handlers") for task in leaf_tasks(play.get(section))]
-    for pattern in TASK_FILE_GLOBS:
-        for path in sorted(root.glob(pattern)):
-            handler = "/handlers/" in path.as_posix()
-            found += [(path, task, handler) for task in leaf_tasks(load(path))]
+    for path in tracked_files(root, PLAYBOOK_GLOBS):
+        plays = load(path)
+        if not isinstance(plays, list) or not all(isinstance(play, dict) for play in plays):
+            continue
+        if not any("hosts" in play for play in plays):
+            continue
+        for play in plays:
+            for section in PLAY_SECTIONS:
+                found += [(path, task, section == "handlers") for task in leaf_tasks(play.get(section))]
+    for path in tracked_files(root, TASK_FILE_GLOBS):
+        handler = "/handlers/" in path.as_posix()
+        found += [(path, task, handler) for task in leaf_tasks(load(path))]
 
     notified = notified_names(task for _, task, _ in found)
     tasks = {}
