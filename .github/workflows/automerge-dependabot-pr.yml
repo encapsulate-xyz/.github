@@ -17,6 +17,7 @@ jobs:
   dependabot:
     environment: automerge
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -55,6 +56,8 @@ jobs:
           # the issue step below turns this file into the run's issue.
           mkdir -p out
           : > out/errors.md
+          # Every merge is recorded on the run's summary page, which is the record of a run that opens no issue.
+          : > out/merged.md
 
           for REPO in "${REPOS[@]}"; do
             echo "========================================"
@@ -87,9 +90,18 @@ jobs:
               if ! gh pr merge "$PR" --repo "$REPO" --squash --admin 2>out/err.txt; then
                 echo "::error::Failed to merge $REPO#$PR"
                 echo "- **$REPO#$PR**: merge failed: \`$(head -c 300 out/err.txt | tr '\n' ' ')\`" >> out/errors.md
+                continue
               fi
+              echo "- [$REPO#$PR](https://github.com/$REPO/pull/$PR)" >> out/merged.md
             done
           done
+
+          {
+            echo "## Dependabot Auto-Merge · $(wc -l < out/merged.md) merged · $(wc -l < out/errors.md) errors"
+            echo
+            if [ -s out/merged.md ]; then echo "### Merged"; echo; cat out/merged.md; else echo "Nothing merged."; fi
+            if [ -s out/errors.md ]; then echo; echo "### Errors"; echo; cat out/errors.md; fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
           [ ! -s out/errors.md ]
 
