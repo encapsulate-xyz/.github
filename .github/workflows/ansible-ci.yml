@@ -95,10 +95,11 @@ jobs:
 
           sys.exit(1 if failed else 0)
 
+      # one of our own projects may deploy its latest main on purpose: "# unpinned: <why>" on the line skips it
       - name: Check versions are pinned
         run: |
-          grep -rnE "^\s*version:\s*[\"']?(latest|master|main)[\"']?\s*$" group_vars 2>/dev/null | while IFS=: read -r file line _; do
-            echo "::warning file=$file,line=$line::Version is not pinned; use a release tag"
+          grep -rnE "^\s*version:\s*[\"']?(latest|master|main)[\"']?\s*(#.*)?$" group_vars 2>/dev/null | grep -vE "#\s*unpinned:\s*\S" | while IFS=: read -r file line _; do
+            echo "::warning file=$file,line=$line::Version is not pinned; use a release tag, or mark a deliberate branch with '# unpinned: <why>'"
           done
 
       # the vault password isn't available here, so encrypted files become empty stubs for the checks below
