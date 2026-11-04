@@ -9,11 +9,15 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
+
+concurrency: automerge-dependabot
 
 jobs:
   dependabot:
     environment: automerge
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -27,10 +31,12 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Approve and Auto-merge PRs
+        id: merge
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          set -eo pipefail
+          set -o pipefail
 
           # Define the repositories to track
           REPOS=(
@@ -46,14 +52,26 @@ jobs:
             "encapsulate-xyz/pharos-staking-hub"
           )
 
+          # Every failure is recorded in errors.md and the loop goes on, so one broken repo or PR never stops the
+          # others. A PR whose checks failed is not merged: it goes to hands.md for a person to decide on. Both
+          # files make the run's issue (the step below); errors.md alone turns the run red.
+          # Every merge (merged.md) and every PR still waiting on its checks (waiting.md) is recorded on the run's
+          # summary page, which is the record of a run that opens no issue.
+          mkdir -p out
+          : > out/errors.md
+          : > out/hands.md
+          : > out/merged.md
+          : > out/waiting.md
+
           for REPO in "${REPOS[@]}"; do
             echo "========================================"
             echo "Checking repository: $REPO"
-            
+
             # 1. Fetch all open PR numbers created by Dependabot for the repository, sorting oldest to newest
-            if ! PR_LIST=$(gh pr list --repo "$REPO" --author "app/dependabot" --state open --json number --jq 'reverse | .[].number'); then
-              echo "Error: Failed to fetch PRs for repository $REPO. Check GitHub App token installation and permissions."
-              exit 1
+            if ! PR_LIST=$(gh pr list --repo "$REPO" --author "app/dependabot" --state open --json number --jq 'reverse | .[].number' 2>out/err.txt); then
+              echo "::error::Failed to fetch PRs for $REPO"
+              echo "- **$REPO**: could not list its PRs (is the GitHub App installed with access?): \`$(head -c 300 out/err.txt | tr '\n' ' ')\`" >> out/errors.md
+              continue
             fi
 
             if [ -z "$PR_LIST" ]; then
@@ -64,32 +82,131 @@ jobs:
             # 2. Loop through each PR number
             for PR in $PR_LIST; do
               echo "Processing Dependabot PR #$PR in $REPO..."
-              
+              URL="https://github.com/$REPO/pull/$PR"
+
+              # Read its checks first: --admin below merges past them, so a PR is only merged when none failed and
+              # none is still running. A repo with no CI has no checks, and its PRs merge.
+              if ! VIEW=$(gh pr view "$PR" --repo "$REPO" --json title,statusCheckRollup 2>out/err.txt); then
+                echo "::error::Failed to read the checks of $REPO#$PR"
+                echo "- **$REPO#$PR**: could not read its checks: \`$(head -c 300 out/err.txt | tr '\n' ' ')\`" >> out/errors.md
+                continue
+              fi
+              TITLE=$(jq -r '.title' <<< "$VIEW")
+              # one line per check that is not a pass: "fail <name>" or "pending <name>" (check runs and commit statuses)
+              CHECKS=$(jq -r '.statusCheckRollup[] |
+                if .__typename == "CheckRun" then
+                  (if .status != "COMPLETED" then "pending"
+                   elif ((.conclusion // "") | test("^(FAILURE|TIMED_OUT|CANCELLED|ACTION_REQUIRED|STARTUP_FAILURE)$")) then "fail"
+                   else empty end) + " " + .name
+                else
+                  (if (.state | test("^(PENDING|EXPECTED)$")) then "pending"
+                   elif (.state | test("^(FAILURE|ERROR)$")) then "fail"
+                   else empty end) + " " + .context
+                end' <<< "$VIEW")
+              FAILING=$(grep '^fail ' <<< "$CHECKS" | cut -c6- | sort -u | paste -sd ',' | sed 's/,/, /g' || true)
+              PENDING=$(grep '^pending ' <<< "$CHECKS" | cut -c9- | sort -u | paste -sd ',' | sed 's/,/, /g' || true)
+              if [ -n "$FAILING" ]; then
+                echo "::warning::$REPO#$PR not merged: checks failing ($FAILING)"
+                echo "- **[$REPO#$PR]($URL)**: checks failing: \`$FAILING\` — $TITLE" >> out/hands.md
+                continue
+              fi
+              if [ -n "$PENDING" ]; then
+                echo "$REPO#$PR not merged yet: checks still running ($PENDING); the next run picks it up"
+                echo "- [$REPO#$PR]($URL): \`$PENDING\` — $TITLE" >> out/waiting.md
+                continue
+              fi
+
               # Approve the PR
-              gh pr review "$PR" --repo "$REPO" --approve
-              
+              if ! gh pr review "$PR" --repo "$REPO" --approve 2>out/err.txt; then
+                echo "::error::Failed to approve $REPO#$PR"
+                echo "- **$REPO#$PR**: approve failed: \`$(head -c 300 out/err.txt | tr '\n' ' ')\`" >> out/errors.md
+                continue
+              fi
+
               # Merge the PR
-              gh pr merge "$PR" --repo "$REPO" --squash --admin
+              if ! gh pr merge "$PR" --repo "$REPO" --squash --admin 2>out/err.txt; then
+                echo "::error::Failed to merge $REPO#$PR"
+                echo "- **$REPO#$PR**: merge failed: \`$(head -c 300 out/err.txt | tr '\n' ' ')\`" >> out/errors.md
+                continue
+              fi
+              echo "- [$REPO#$PR]($URL) — $TITLE" >> out/merged.md
             done
           done
 
-  notify-on-failure:
-    runs-on: ubuntu-latest
-    environment: automerge
-    needs: dependabot
-    if: failure()
-    steps:
-      - name: Send failure email
-        uses: dawidd6/action-send-mail@v17
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: bot@encapsulate.xyz
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "GitHub Actions Failed: Dependabot Auto-Merge"
-          to: "team@encapsulate.xyz"
-          from: "bot@encapsulate.xyz"
-          body: |
-            The "Dependabot Auto-Merge" workflow failed
-            Repository: ${{ github.repository }}
-            Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          {
+            echo "## Dependabot Auto-Merge · $(wc -l < out/merged.md) merged · $(wc -l < out/hands.md) for a decision · $(wc -l < out/errors.md) errors"
+            echo
+            if [ -s out/merged.md ]; then echo "### Merged"; echo; cat out/merged.md; else echo "Nothing merged."; fi
+            if [ -s out/hands.md ]; then echo; echo "### Needs a decision (checks failing, not merged)"; echo; cat out/hands.md; fi
+            if [ -s out/waiting.md ]; then echo; echo "### Waiting on checks (the next run picks these up)"; echo; cat out/waiting.md; fi
+            if [ -s out/errors.md ]; then echo; echo "### Errors"; echo; cat out/errors.md; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          [ ! -s out/errors.md ]
+
+      - name: The run's issue
+        # one issue per run that has something for a person: a failure ("failed", red, the run is red too) or a PR
+        # whose checks failed ("needs a decision", amber, the run stays green). Left open until someone closes it;
+        # the same things still waiting on an open issue are not opened again (no new issue, no comment, no email).
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_FAILED: ${{ steps.merge.outcome == 'failure' || job.status == 'failure' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -eo pipefail
+          mkdir -p out
+          touch out/errors.md out/hands.md
+          ERRORS=$(wc -l < out/errors.md)
+          HANDS=$(wc -l < out/hands.md)
+          FAILED=$([ "$RUN_FAILED" = true ] && echo 1 || echo 0)
+          if [ "$ERRORS" -eq 0 ] && [ "$HANDS" -eq 0 ] && [ "$FAILED" -eq 0 ]; then
+            echo "Nothing failed and nothing needs a decision — no issue (the record is the run's summary page)"
+            exit 0
+          fi
+
+          : > out/issue.md
+          LABELS=()
+          PARTS=()
+          if [ "$HANDS" -gt 0 ]; then
+            { echo "### Needs a decision"; echo; echo "Their checks failed, so they were not merged: fix, merge or close each one by hand."; echo; cat out/hands.md; echo; } >> out/issue.md
+            LABELS+=("needs a decision")
+            PARTS+=("$HANDS for a decision")
+          fi
+          if [ "$ERRORS" -gt 0 ]; then
+            { echo "### Errors"; echo; cat out/errors.md; echo; } >> out/issue.md
+            PARTS+=("$ERRORS errors")
+          elif [ "$FAILED" -eq 1 ]; then
+            { echo "A step stopped before the merge loop could report: the run's log has the error."; echo; } >> out/issue.md
+            PARTS+=("the run failed")
+          fi
+          if [ "$ERRORS" -gt 0 ] || [ "$FAILED" -eq 1 ]; then LABELS+=("failed"); fi
+
+          # the fingerprint is which repo/PR is waiting and why, not the error text nor the check names, so a repeat matches
+          {
+            sed -E 's/: `.*$//' out/errors.md out/hands.md
+            if [ "$ERRORS" -eq 0 ] && [ "$FAILED" -eq 1 ]; then echo "the run failed before its report"; fi
+          } | sort > out/fingerprint.txt
+          DIGEST=$(sha1sum < out/fingerprint.txt | cut -c1-12)
+          printf '_Run: %s_\n\n<!-- digest:%s -->\n' "$RUN_URL" "$DIGEST" >> out/issue.md
+          TITLE="Dependabot Auto-Merge · $(date -u +%F)"
+          for P in "${PARTS[@]}"; do TITLE="$TITLE · $P"; done
+
+          SAME=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json url,title,body \
+            --jq "[.[] | select((.title | startswith(\"Dependabot Auto-Merge ·\")) and (.body | contains(\"digest:$DIGEST\")))][0].url // empty")
+          if [ -n "$SAME" ]; then
+            echo "$SAME: still open and unchanged — no new issue"
+            exit 0
+          fi
+
+          gh label create "failed" --repo "$GITHUB_REPOSITORY" --force --color D73A4A \
+            --description "A job errored or stopped: the run failed" >/dev/null || true
+          gh label create "needs a decision" --repo "$GITHUB_REPOSITORY" --force --color E3B341 \
+            --description "A Dependabot PR's checks failed: a person decides to fix, merge or close it" >/dev/null || true
+          LABEL_ARGS=()
+          for L in "${LABELS[@]}"; do LABEL_ARGS+=(--label "$L"); done
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file out/issue.md "${LABEL_ARGS[@]}"
+
+      - name: The job failed
+        if: steps.merge.outcome == 'failure'
+        run: exit 1
