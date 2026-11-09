@@ -40,16 +40,18 @@ jobs:
 
           # Define the repositories to track
           REPOS=(
-            "encapsulate-xyz/sui-rgp-ui"
+            "encapsulate-xyz/tidemark"
             "encapsulate-xyz/sui-rgp-autopilot"
             "encapsulate-xyz/titanium"
-            "encapsulate-xyz/solana-graph-viz"
+            "encapsulate-xyz/solana-crux"
             "encapsulate-xyz/api-server"
             "encapsulate-xyz/aptos-network-viz"
             "encapsulate-xyz/cosmos-bots"
+            "encapsulate-xyz/gitbell-axelar"
             "encapsulate-xyz/askeladd"
             "encapsulate-xyz/iota-sweep-script"
             "encapsulate-xyz/pharos-staking-hub"
+            "encapsulate-xyz/holdfast"
           )
 
           # Every failure is recorded in errors.md and the loop goes on, so one broken repo or PR never stops the
