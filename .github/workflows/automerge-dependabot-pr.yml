@@ -59,6 +59,13 @@ jobs:
           # files make the run's issue (the step below); errors.md alone turns the run red.
           # Every merge (merged.md) and every PR still waiting on its checks (waiting.md) is recorded on the run's
           # summary page, which is the record of a run that opens no issue.
+          # A PR's title and the checks on its last commit: check runs and commit statuses, as `gh pr view` gives them.
+          CHECKS_QUERY='query($owner: String!, $name: String!, $number: Int!) {
+            repository(owner: $owner, name: $name) { pullRequest(number: $number) { title
+              commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename
+                ... on CheckRun { name status conclusion }
+                ... on StatusContext { context state } } } } } } } } } }'
+
           mkdir -p out
           : > out/errors.md
           : > out/hands.md
@@ -88,7 +95,12 @@ jobs:
 
               # Read its checks first: --admin below merges past them, so a PR is only merged when none failed and
               # none is still running. A repo with no CI has no checks, and its PRs merge.
-              if ! VIEW=$(gh pr view "$PR" --repo "$REPO" --json title,statusCheckRollup 2>out/err.txt); then
+              # GraphQL straight, not `gh pr view --json statusCheckRollup`: that also asks for each check's workflow
+              # run, which needs the app to read Actions. Name, status and conclusion need only Checks and Commit
+              # statuses (read), which the app has.
+              if ! VIEW=$(gh api graphql -f query="$CHECKS_QUERY" -F owner="${REPO%/*}" -F name="${REPO#*/}" -F number="$PR" \
+                  --jq '.data.repository.pullRequest | {title, statusCheckRollup: (.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // [])}' \
+                  2>out/err.txt); then
                 echo "::error::Failed to read the checks of $REPO#$PR"
                 echo "- **$REPO#$PR**: could not read its checks: \`$(head -c 300 out/err.txt | tr '\n' ' ')\`" >> out/errors.md
                 continue
